@@ -193,13 +193,11 @@ fn draw_target(display: &mut DisplayType,
 ) {
     if let Ok(_) = display_csn.set_low() {
 
-        if let Some(targ_circle) = Circle::new(
+        let targ_circle = Circle::new(
             Point::new(x_pos, y_pos),
             20,
-        ).into_styled(PrimitiveStyle::with_stroke(stroke_color, 4))
-        {
-            targ_circle.draw(display).unwrap();
-        }
+        ).into_styled(PrimitiveStyle::with_stroke(stroke_color, 4));
+        targ_circle.draw(display).unwrap();
     }
     let _ = display_csn.set_high();
 }
