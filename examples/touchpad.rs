@@ -10,7 +10,8 @@ extern crate panic_semihosting; // logs messages to the host stderr; requires a 
 use nrf52832_hal as p_hal;
 use p_hal::nrf52832_pac as pac;
 use p_hal::{clocks::ClocksExt, gpio::{GpioExt,Level}};
-use p_hal::{spim, twim, delay::Delay, clocks::LfOscConfiguration};
+use p_hal::{rng::RngExt, spim, twim, delay::Delay, clocks::LfOscConfiguration};
+
 
 
 use arrayvec::ArrayString;
@@ -80,7 +81,7 @@ fn main() -> ! {
     hprintln!("\r\n--- BEGIN ---").unwrap();
 
     // random number generator peripheral
-    //let mut rng = dp.RNG.constrain();
+    let mut rng = dp.RNG.constrain();
 
     // // pushbutton input GPIO: P0.13
     // let mut _user_butt = port0.p0_13.into_floating_input().degrade();
@@ -147,6 +148,8 @@ fn main() -> ! {
         Point::new(10, half_height - 50),
         Point::new(SCREEN_WIDTH - 20, half_height + 50),
     );
+
+    let mut touchpad = CST816S::new(i2c_bus0.acquire());
 
 
     loop {
