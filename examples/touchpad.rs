@@ -10,7 +10,7 @@ extern crate panic_semihosting; // logs messages to the host stderr; requires a 
 use nrf52832_hal as p_hal;
 use p_hal::nrf52832_pac as pac;
 use p_hal::{clocks::ClocksExt, gpio::{GpioExt,Level}};
-use p_hal::{rng::RngExt, spim, twim, delay::Delay, clocks::LfOscConfiguration};
+use p_hal::{rng::RngExt, spim, twim, delay::Delay};
 
 
 
@@ -49,6 +49,8 @@ const SCREEN_RADIUS: u32 = (MIN_SCREEN_DIM / 2) as u32;
 const FONT_HEIGHT: i32 = 20; //for Font12x16
 
 
+
+
 type DisplayType<'a> = st7789::ST7789<
     shared_bus::proxy::BusProxy<
         'a,
@@ -70,11 +72,7 @@ fn main() -> ! {
     // PineTime has a 32 MHz HSE (HFXO) and a 32.768 kHz LSE (LFXO)
     // Optimize clock config
     let dp = pac::Peripherals::take().unwrap();
-    // let _clockos = dp.CLOCK.constrain()
-    //     .enable_ext_hfosc()
-    //     //.set_lfclk_src_external(LfOscConfiguration::ExternalNoBypass)
-    //     // TODO starting with external LFCLK hangs...
-    //     .start_lfclk();
+    let _clockos = dp.CLOCK.constrain().enable_ext_hfosc();
 
     let port0 = dp.P0.split();
 
@@ -105,7 +103,6 @@ fn main() -> ! {
 
     delay_source.delay_ms(1u8);
 
-
     let spim0_pins = spim::Pins {
         sck: port0.p0_02.into_push_pull_output(Level::Low).degrade(),
         miso: None,
@@ -126,7 +123,6 @@ fn main() -> ! {
     let mut _backlight = port0.p0_22.into_push_pull_output(Level::Low);
     // SPI chip select (CSN) for the display.
     let mut display_csn = port0.p0_25.into_push_pull_output(Level::High);
-
     // data/clock switch pin for display
     let display_dc = port0.p0_18.into_push_pull_output(Level::Low);
     // reset pin for display
@@ -143,29 +139,20 @@ fn main() -> ! {
 
     configure_display(&mut display, &mut display_csn, &mut delay_source);
     draw_background(&mut display, &mut display_csn);
-    let half_height = SCREEN_HEIGHT / 2;
-    let graph_area = Rectangle::new(
-        Point::new(10, half_height - 50),
-        Point::new(SCREEN_WIDTH - 20, half_height + 50),
-    );
 
-    let mut touchpad = CST816S::new(i2c_bus0.acquire());
+    // setup touchpad external interrupt pin: P0.28/AIN4 (TP_INT)
+    let touch_int  = port0.p0_28.into_floating_input().degrade();
+    // setup touchpad reset pin: P0.10/NFC2 (TP_RESET)
+    let touch_rst  = port0.p0_10.into_push_pull_output(Level::Low).degrade();
 
+    let mut touchpad = CST816S::new(
+        i2c_bus0.acquire(), touch_int, touch_rst);
+    touchpad.setup(&mut delay_source).unwrap();
 
     loop {
-
-        let rando = [
-            rng.random_u16() as i16,
-            rng.random_u16() as i16,
-            rng.random_u16() as i16,
-        ];
-        render_vec3_i16(
-            &mut display,
-            &mut display_csn,
-             10,
-            20,
-            rando.as_ref(),
-        );
+        let rand_x = (rng.random_u8() as i32) % SCREEN_WIDTH;
+        let rand_y = (rng.random_u8() as i32) % SCREEN_HEIGHT;
+        draw_target(&mut display, &mut display_csn, rand_x, rand_y,Rgb565::GREEN);
 
         delay_source.delay_us(100u32);
     }
@@ -198,77 +185,25 @@ fn draw_background(display: &mut DisplayType,  display_csn: &mut impl OutputPin)
     let _ = display_csn.set_high();
 }
 
-/// Render formatted text to the display
-fn render_text(
-    display: &mut DisplayType,
-    display_csn: &mut impl OutputPin,
-    x_pos: i32,
-    y_pos: i32,
-    color: Rgb565,
-    args: Arguments<'_>,
+fn draw_target(display: &mut DisplayType,
+               display_csn: &mut impl OutputPin,
+               x_pos: i32,
+               y_pos: i32,
+               stroke_color: Rgb565,
 ) {
-    let mut format_buf = ArrayString::<[u8; 16]>::new();
-    if fmt::write(&mut format_buf, args).is_ok() {
-        if display_csn.set_low().is_ok() {
-            let _ = egtext!(
-                text = &format_buf,
-                top_left = Point::new(x_pos, y_pos),
-                style = text_style!(
-                    font = Font12x16,
-                    text_color = color,
-                    background_color = Rgb565::BLACK,
-                )
-            ).draw(display);
+    if let Ok(_) = display_csn.set_low() {
+
+        if let Some(targ_circle) = Circle::new(
+            Point::new(x_pos, y_pos),
+            20,
+        ).into_styled(PrimitiveStyle::with_stroke(stroke_color, 4))
+        {
+            targ_circle.draw(display).unwrap();
         }
-        let _ = display_csn.set_high();
-    }
-}
-
-/// render a vector of three i16 to the display
-fn render_vec3_i16(
-    display: &mut DisplayType,
-    display_csn: &mut impl OutputPin,
-    x_pos: i32,
-    start_y: i32,
-    buf: &[i16],
-) {
-    //TODO dynamically reformat depending on font size
-    let mut y_pos = start_y;
-    render_text(display, display_csn, x_pos,y_pos, Rgb565::GREEN,format_args!("X: {}", buf[0]));
-    y_pos += FONT_HEIGHT;
-    render_text(display, display_csn, x_pos,y_pos, Rgb565::GREEN, format_args!("Y: {}", buf[1]));
-    y_pos += FONT_HEIGHT;
-    render_text(display, display_csn, x_pos,y_pos, Rgb565::GREEN, format_args!("Z: {}", buf[2]));
-}
-
-fn render_graph_bar(
-    display: &mut DisplayType,
-    display_csn: &mut impl OutputPin,
-    area: &Rectangle,
-    x_pos: i32,
-    value: f32, // this value
-    avg: f32, // avg value
-    color: Rgb565,
-) {
-    if display_csn.set_low().is_ok() {
-        // clear rect
-        let _ = Rectangle::new(Point::new(x_pos, area.top_left.y), Point::new(x_pos + 2, area.bottom_right.y))
-            .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
-            .draw(display);
-        // actual bar
-        //let y_off = (((area.bottom_right.y - area.top_left.y) as f32) * value) as i32;
-        let half_height = (area.bottom_right.y - area.top_left.y)/2;
-        let y_ctr =  area.top_left.y + half_height;
-        let delta = (value - avg) / avg; //normalized delta
-        let y_delta = (delta * (half_height  as f32)) as i32;
-        let y_pos = y_ctr + y_delta;
-        let _ = Rectangle::new(Point::new(x_pos, y_pos), Point::new(x_pos + 2, area.bottom_right.y))
-            .into_styled(PrimitiveStyle::with_fill(color))
-            .draw(display);
     }
     let _ = display_csn.set_high();
-
-    // display.draw( Rect::new(Coord::new(xpos, 0), Coord::new(xpos + (2*BAR_WIDTH), SCREEN_HEIGHT)).with_fill(Some(0u8.into())).into_iter());
-
 }
+
+
+
 
