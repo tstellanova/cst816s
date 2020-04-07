@@ -14,7 +14,7 @@ use p_hal::{rng::RngExt, spim, twim, delay::Delay};
 
 
 
-use arrayvec::ArrayString;
+use arrayvec::{ArrayString, ArrayVec};
 use core::fmt;
 use core::fmt::Arguments;
 use cortex_m_rt as rt;
@@ -26,7 +26,7 @@ use embedded_graphics::{
 use embedded_hal::digital::v2::OutputPin;
 use rt::entry;
 use st7789::{Orientation, ST7789};
-use cst816s::CST816S;
+use cst816s::{CST816S, MAX_TOUCH_CHANNELS, TouchEvent};
 
 use embedded_hal::blocking::delay::{DelayMs,DelayUs};
 use core::convert::TryInto;
@@ -99,7 +99,7 @@ fn main() -> ! {
         sda: port0.p0_06.into_floating_input().degrade(),
     };
     let i2c_port = twim::Twim::new(dp.TWIM1, i2c0_pins, twim::Frequency::K400);
-    let i2c_bus0 = shared_bus::CortexMBusManager::new(i2c_port);
+    // let i2c_bus0 = shared_bus::CortexMBusManager::new(i2c_port);
 
     delay_source.delay_ms(1u8);
 
@@ -143,18 +143,28 @@ fn main() -> ! {
     // setup touchpad external interrupt pin: P0.28/AIN4 (TP_INT)
     let touch_int  = port0.p0_28.into_floating_input().degrade();
     // setup touchpad reset pin: P0.10/NFC2 (TP_RESET)
-    let touch_rst  = port0.p0_10.into_push_pull_output(Level::Low).degrade();
+    let touch_rst  = port0.p0_10.into_push_pull_output(Level::High).degrade();
 
     let mut touchpad = CST816S::new(
-        i2c_bus0.acquire(), touch_int, touch_rst);
+        i2c_port,
+        touch_int,
+        touch_rst);
+    hprintln!("setup...").unwrap();
     touchpad.setup(&mut delay_source).unwrap();
+    hprintln!("setup done").unwrap();
 
     loop {
-        let rand_x = (rng.random_u8() as i32) % SCREEN_WIDTH;
-        let rand_y = (rng.random_u8() as i32) % SCREEN_HEIGHT;
-        draw_target(&mut display, &mut display_csn, rand_x, rand_y,Rgb565::GREEN);
+        // let rand_x = (rng.random_u8() as i32) % (3*SCREEN_WIDTH/4);
+        // let rand_y = (rng.random_u8() as i32) % (3*SCREEN_HEIGHT/4);
+        // draw_target(&mut display, &mut display_csn, rand_x, rand_y,Rgb565::RED);
 
-        delay_source.delay_us(100u32);
+        if let Some(evt) = touchpad.read_one_touch_event() {
+            hprintln!("{:?}", evt).unwrap();
+        }
+        else {
+            delay_source.delay_us(1000u32);
+        }
+
     }
 }
 
@@ -195,7 +205,7 @@ fn draw_target(display: &mut DisplayType,
 
         let targ_circle = Circle::new(
             Point::new(x_pos, y_pos),
-            20,
+            10,
         ).into_styled(PrimitiveStyle::with_stroke(stroke_color, 4));
         targ_circle.draw(display).unwrap();
     }

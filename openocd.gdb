@@ -35,6 +35,12 @@ monitor arm semihosting enable
 # # enable ITM port 0
 # monitor itm port 0 on
 
+# don't confirm when quitting debugger
+define hook-quit
+    set confirm off
+end
+
+
 load
 
 # start the process but immediately halt the processor

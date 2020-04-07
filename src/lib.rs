@@ -28,9 +28,12 @@ pub struct CST816S<I2C, PINT, RST> {
     blob_buf: [u8; BLOB_BUF_LEN],
 }
 
+#[derive(Debug)]
 pub struct TouchEvent {
     pub x: i32,
     pub y: i32,
+    /// the gesture that this touch is part of
+    pub gesture: u8,
     /// 0 down, 1 lift, 2 contact
     pub action: u8,
     /// identifies the finger that touched (0-9)
@@ -78,13 +81,13 @@ where
     pub fn read_registers(&mut self)
         -> Result<(), Error<CommE, PinE>> {
 
-        //TODO does write_read work for this device? or do we need separate writes and reads?
-        self.i2c.write_read(Self::DEFAULT_I2C_ADDRESS,
-                            &[0],
-                            self.blob_buf.as_mut()).map_err(Error::Comm)?;
+        // //TODO does write_read work for this device? or do we need separate writes and reads?
+        // self.i2c.write_read(Self::DEFAULT_I2C_ADDRESS,
+        //                     &[Self::REG_FIRST],
+        //                     self.blob_buf.as_mut()).map_err(Error::Comm)?;
 
-        // self.i2c.write(Self::DEFAULT_I2C_ADDRESS, &[0]).map_err(Error::Comm)?;
-        // self.i2c.read(Self::DEFAULT_I2C_ADDRESS, self.blob_buf.as_mut()).map_err(Error::Comm)?;
+        self.i2c.write(Self::DEFAULT_I2C_ADDRESS, &[Self::REG_FIRST]).map_err(Error::Comm)?;
+        self.i2c.read(Self::DEFAULT_I2C_ADDRESS, self.blob_buf.as_mut()).map_err(Error::Comm)?;
 
         Ok(())
     }
@@ -98,6 +101,7 @@ where
         let mut touch = TouchEvent {
             x: 0,
             y: 0,
+            gesture: 0,
             action: 0,
             finger_id: 0,
             pressure: 0,
@@ -127,21 +131,24 @@ where
 
     /// The main method for getting the current set of touch events
     /// Reads events into the event buffer provided
-    pub fn read_touch_events(&mut self, events: &mut ArrayVec::<[TouchEvent; MAX_TOUCH_CHANNELS]>) {
-        events.clear();
+    pub fn read_one_touch_event(&mut self, ) -> Option<TouchEvent> {
 
         if self.read_registers().is_ok() {
-            let _gesture_id = self.blob_buf[Self::GESTURE_ID_OFF]; //TODO report gestures
+            let gesture_id = self.blob_buf[Self::GESTURE_ID_OFF]; //TODO report gestures
             let num_points = (self.blob_buf[Self::NUM_POINTS_OFF] & 0x0F) as usize;
             for i in 0..num_points {
                 let evt_start: usize = (i * Self::RAW_TOUCH_EVENT_LEN) + Self::GESTURE_HEADER_LEN;
-                if let Some(evt) = Self::touch_event_from_data(
+                if let Some(mut evt) = Self::touch_event_from_data(
                     self.blob_buf[evt_start..evt_start + Self::RAW_TOUCH_EVENT_LEN].as_ref())
                 {
-                    events.push(evt);
+                    evt.gesture = gesture_id;
+                    //TODO we only ever appear to get one event on the PineTime: handle more?
+                    return Some(evt)
                 }
             }
         }
+
+       None
     }
 
     const DEFAULT_I2C_ADDRESS: u8 = 0x15;
