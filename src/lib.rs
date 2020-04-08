@@ -1,11 +1,9 @@
 #![no_std]
 
-
 use core::fmt::Debug;
 
 use embedded_hal as hal;
-use hal::blocking::delay::{DelayUs};
-
+use hal::blocking::delay::DelayUs;
 
 /// Errors in this crate
 #[derive(Debug)]
@@ -14,13 +12,12 @@ pub enum Error<CommE, PinE> {
     Pin(PinE),
 
     GenericError,
-
 }
 
 pub struct CST816S<I2C, PINT, RST> {
     i2c: I2C,
     pin_int: PINT,
-    pin_rst:  RST,
+    pin_rst: RST,
     blob_buf: [u8; BLOB_BUF_LEN],
 }
 
@@ -43,12 +40,11 @@ pub struct TouchEvent {
 impl<I2C, PINT, RST, CommE, PinE> CST816S<I2C, PINT, RST>
 where
     I2C: hal::blocking::i2c::Write<Error = CommE>
-    + hal::blocking::i2c::Read<Error = CommE>
-    + hal::blocking::i2c::WriteRead<Error = CommE>,
+        + hal::blocking::i2c::Read<Error = CommE>
+        + hal::blocking::i2c::WriteRead<Error = CommE>,
     PINT: hal::digital::v2::InputPin,
     RST: hal::digital::v2::StatefulOutputPin<Error = PinE>,
 {
-
     pub fn new(port: I2C, interrupt_pin: PINT, reset_pin: RST) -> Self {
         Self {
             i2c: port,
@@ -59,9 +55,10 @@ where
     }
 
     /// setup the driver to communicate with the device
-    pub fn setup(&mut self, delay_source: &mut impl DelayUs<u32>)
-        -> Result<(), Error<CommE, PinE>>
-    {
+    pub fn setup(
+        &mut self,
+        delay_source: &mut impl DelayUs<u32>,
+    ) -> Result<(), Error<CommE, PinE>> {
         // reset the chip
         self.pin_rst.set_low().map_err(Error::Pin)?;
         delay_source.delay_us(20_000);
@@ -74,16 +71,16 @@ where
     }
 
     /// Read enough registers to fill our read buf
-    pub fn read_registers(&mut self)
-        -> Result<(), Error<CommE, PinE>> {
-
-        self.i2c.write_read(Self::DEFAULT_I2C_ADDRESS,
-                            &[Self::REG_FIRST],
-                            self.blob_buf.as_mut()).map_err(Error::Comm)?;
+    pub fn read_registers(&mut self) -> Result<(), Error<CommE, PinE>> {
+        self.i2c
+            .write_read(
+                Self::DEFAULT_I2C_ADDRESS,
+                &[Self::REG_FIRST],
+                self.blob_buf.as_mut(),
+            )
+            .map_err(Error::Comm)?;
         Ok(())
     }
-
-
 
     ///
     /// Translate raw register data into touch events
@@ -96,7 +93,7 @@ where
             action: 0,
             finger_id: 0,
             pressure: 0,
-            area: 0
+            area: 0,
         };
 
         // two of the registers mix 4 bits of position with other values
@@ -111,19 +108,18 @@ where
 
         // action of touch (0 = down, 1 = up, 2 = contact)
         touch.action = (touch_x_h_and_action >> 6) as u8;
-        touch.finger_id  = (touch_y_h_and_finger >> 4) as u8;
+        touch.finger_id = (touch_y_h_and_finger >> 4) as u8;
 
         //  Compute touch pressure and area
-        touch.pressure = buf[Self::TOUCH_PRESURE_OFF ];
-        touch.area = buf[Self::TOUCH_AREA_OFF ] >> 4;
+        touch.pressure = buf[Self::TOUCH_PRESURE_OFF];
+        touch.area = buf[Self::TOUCH_AREA_OFF] >> 4;
 
         Some(touch)
     }
 
     /// The main method for getting the current set of touch events
     /// Reads events into the event buffer provided
-    pub fn read_one_touch_event(&mut self, ) -> Option<TouchEvent> {
-
+    pub fn read_one_touch_event(&mut self) -> Option<TouchEvent> {
         // the interrupt pin should be low if there is data available;
         // otherwise, attempting to read i2c will cause a stall
         if let Ok(data_available) = self.pin_int.is_low() {
@@ -132,20 +128,22 @@ where
                     let gesture_id = self.blob_buf[Self::GESTURE_ID_OFF];
                     let num_points = (self.blob_buf[Self::NUM_POINTS_OFF] & 0x0F) as usize;
                     for i in 0..num_points {
-                        let evt_start: usize = (i * Self::RAW_TOUCH_EVENT_LEN) + Self::GESTURE_HEADER_LEN;
+                        let evt_start: usize =
+                            (i * Self::RAW_TOUCH_EVENT_LEN) + Self::GESTURE_HEADER_LEN;
                         if let Some(mut evt) = Self::touch_event_from_data(
-                            self.blob_buf[evt_start..evt_start + Self::RAW_TOUCH_EVENT_LEN].as_ref())
-                        {
+                            self.blob_buf[evt_start..evt_start + Self::RAW_TOUCH_EVENT_LEN]
+                                .as_ref(),
+                        ) {
                             evt.gesture = gesture_id;
                             //TODO we only ever appear to get one event on the PineTime: handle more?
-                            return Some(evt)
+                            return Some(evt);
                         }
                     }
                 }
             }
         }
 
-       None
+        None
     }
 
     const DEFAULT_I2C_ADDRESS: u8 = 0x15;
@@ -158,7 +156,7 @@ where
     pub const MAX_TOUCH_CHANNELS: usize = 10;
 
     /// The first register on the device
-    const REG_FIRST:u8 = 	0x00;
+    const REG_FIRST: u8 = 0x00;
 
     /// Header bytes (first three of every register block read)
     // const RESERVED_0_OFF: usize = 0;
@@ -176,13 +174,9 @@ where
     const TOUCH_Y_L_OFF: usize = 3;
     const TOUCH_PRESURE_OFF: usize = 4;
     const TOUCH_AREA_OFF: usize = 5;
-
 }
 
-
 const BLOB_BUF_LEN: usize = 63; // (MAX_TOUCH_CHANNELS + RAW_TOUCH_EVENT_LEN) + GESTURE_HEADER_LEN;
-
-
 
 #[cfg(test)]
 mod tests {

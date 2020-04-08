@@ -8,47 +8,32 @@ extern crate panic_halt; // you can put a breakpoint on `rust_begin_unwind` to c
 extern crate panic_semihosting; // logs messages to the host stderr; requires a debugger
 
 use nrf52832_hal as p_hal;
+use p_hal::gpio::{GpioExt, Level};
 use p_hal::nrf52832_pac as pac;
-use p_hal::{clocks::ClocksExt, gpio::{GpioExt,Level}};
-use p_hal::{rng::RngExt, spim, twim, delay::Delay};
+use p_hal::{delay::Delay, rng::RngExt, spim, twim};
 
-
-
-use core::fmt;
-use core::fmt::Arguments;
 use cortex_m_rt as rt;
 use cortex_m_semihosting::hprintln;
+use cst816s::CST816S;
+use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::{prelude::*, primitives::*, style::*};
-use embedded_graphics::{
-    egtext, fonts::{Font12x16}, pixelcolor::Rgb565, text_style,
-};
 use embedded_hal::digital::v2::OutputPin;
 use rt::entry;
 use st7789::{Orientation, ST7789};
-use cst816s::{CST816S, TouchEvent};
 
-use embedded_hal::blocking::delay::{DelayMs,DelayUs};
-use core::convert::TryInto;
-
+use embedded_hal::blocking::delay::{DelayMs, DelayUs};
 
 pub type HalSpimError = p_hal::spim::Error;
 
 pub type Spim0PortType = p_hal::spim::Spim<pac::SPIM0>;
-pub type DisplaySckPinType =
-p_hal::gpio::p0::P0_18<p_hal::gpio::Output<p_hal::gpio::PushPull>>;
-pub type DisplayMosiPinType =
-p_hal::gpio::p0::P0_26<p_hal::gpio::Output<p_hal::gpio::PushPull>>;
-
+pub type DisplaySckPinType = p_hal::gpio::p0::P0_18<p_hal::gpio::Output<p_hal::gpio::PushPull>>;
+pub type DisplayMosiPinType = p_hal::gpio::p0::P0_26<p_hal::gpio::Output<p_hal::gpio::PushPull>>;
 
 const SCREEN_WIDTH: i32 = 240;
 const SCREEN_HEIGHT: i32 = 240;
 const HALF_SCREEN_WIDTH: i32 = SCREEN_WIDTH / 2;
-const MIN_SCREEN_DIM : i32 = SCREEN_HEIGHT;
+const MIN_SCREEN_DIM: i32 = SCREEN_HEIGHT;
 const SCREEN_RADIUS: u32 = (MIN_SCREEN_DIM / 2) as u32;
-const FONT_HEIGHT: i32 = 20; //for Font12x16
-
-
-
 
 type DisplayType<'a> = st7789::ST7789<
     shared_bus::proxy::BusProxy<
@@ -80,7 +65,6 @@ fn main() -> ! {
     // random number generator peripheral
     let mut rng = dp.RNG.constrain();
 
-
     // internal i2c0 bus devices: BMA421 (accel), HRS3300 (hrs), CST816S (TouchPad)
     // BMA421-INT:  P0.08
     // TP-INT: P0.28
@@ -100,13 +84,7 @@ fn main() -> ! {
     };
 
     // create SPIM0 interface, 8 Mbps, use 122 as "over read character"
-    let spim0 = spim::Spim::new(
-        dp.SPIM0,
-        spim0_pins,
-        spim::Frequency::M8,
-        spim::MODE_3,
-        122,
-    );
+    let spim0 = spim::Spim::new(dp.SPIM0, spim0_pins, spim::Frequency::M8, spim::MODE_3, 122);
     let spi_bus0 = shared_bus::CortexMBusManager::new(spim0);
 
     // backlight control pin for display: always on
@@ -131,46 +109,44 @@ fn main() -> ! {
     draw_background(&mut display, &mut display_csn);
 
     // setup touchpad external interrupt pin: P0.28/AIN4 (TP_INT)
-    let touch_int  = port0.p0_28.into_pullup_input().degrade();
+    let touch_int = port0.p0_28.into_pullup_input().degrade();
     // setup touchpad reset pin: P0.10/NFC2 (TP_RESET)
-    let touch_rst  = port0.p0_10.into_push_pull_output(Level::High).degrade();
+    let touch_rst = port0.p0_10.into_push_pull_output(Level::High).degrade();
 
-    let mut touchpad = CST816S::new(
-        i2c_port,
-        touch_int,
-        touch_rst);
+    let mut touchpad = CST816S::new(i2c_port, touch_int, touch_rst);
     touchpad.setup(&mut delay_source).unwrap();
     hprintln!("setup done").unwrap();
 
     loop {
         let rand_val = rng.random_u16();
-        let rand_color = Rgb565::new((rand_val >> 11) as u8, (rand_val >> 5) as u8 & 0x3F, (rand_val & 0x1F) as u8);
+        let rand_color = Rgb565::new(
+            (rand_val >> 11) as u8,
+            (rand_val >> 5) as u8 & 0x3F,
+            (rand_val & 0x1F) as u8,
+        );
 
         if let Some(evt) = touchpad.read_one_touch_event() {
-            draw_target(&mut display, &mut display_csn, evt.x, evt.y,rand_color);
-            //hprintln!("{:?}", evt).unwrap();
-        }
-        else {
+            draw_target(&mut display, &mut display_csn, evt.x, evt.y, rand_color);
+        } else {
             delay_source.delay_us(1000u32);
         }
-
     }
 }
 
-
-fn configure_display(display: &mut DisplayType,  display_csn: &mut impl OutputPin, delay_source: &mut (impl DelayMs<u8> + DelayUs<u32>)) {
+fn configure_display(
+    display: &mut DisplayType,
+    display_csn: &mut impl OutputPin,
+    delay_source: &mut (impl DelayMs<u8> + DelayUs<u32>),
+) {
     let _ = display_csn.set_low();
     display.init(delay_source).unwrap();
     display.set_orientation(&Orientation::Portrait).unwrap();
     let _ = display_csn.set_high();
 }
 
-fn draw_background(display: &mut DisplayType,  display_csn: &mut impl OutputPin) {
+fn draw_background(display: &mut DisplayType, display_csn: &mut impl OutputPin) {
     if let Ok(_) = display_csn.set_low() {
-        let clear_bg = Rectangle::new(
-            Point::new(0, 0),
-            Point::new(SCREEN_WIDTH, SCREEN_HEIGHT),
-        )
+        let clear_bg = Rectangle::new(Point::new(0, 0), Point::new(SCREEN_WIDTH, SCREEN_HEIGHT))
             .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK));
         clear_bg.draw(display).unwrap();
 
@@ -178,29 +154,23 @@ fn draw_background(display: &mut DisplayType,  display_csn: &mut impl OutputPin)
             Point::new(HALF_SCREEN_WIDTH, SCREEN_HEIGHT / 2),
             SCREEN_RADIUS,
         )
-            .into_styled(PrimitiveStyle::with_stroke(Rgb565::YELLOW, 4));
+        .into_styled(PrimitiveStyle::with_stroke(Rgb565::YELLOW, 4));
         center_circle.draw(display).unwrap();
     }
     let _ = display_csn.set_high();
 }
 
-fn draw_target(display: &mut DisplayType,
-               display_csn: &mut impl OutputPin,
-               x_pos: i32,
-               y_pos: i32,
-               stroke_color: Rgb565,
+fn draw_target(
+    display: &mut DisplayType,
+    display_csn: &mut impl OutputPin,
+    x_pos: i32,
+    y_pos: i32,
+    stroke_color: Rgb565,
 ) {
     if let Ok(_) = display_csn.set_low() {
-
-        let targ_circle = Circle::new(
-            Point::new(x_pos, y_pos),
-            10,
-        ).into_styled(PrimitiveStyle::with_stroke(stroke_color, 4));
+        let targ_circle = Circle::new(Point::new(x_pos, y_pos), 10)
+            .into_styled(PrimitiveStyle::with_stroke(stroke_color, 4));
         targ_circle.draw(display).unwrap();
     }
     let _ = display_csn.set_high();
 }
-
-
-
-
