@@ -38,7 +38,7 @@ cargo run --example touchpad
 
 ## Resources
 - [Datasheet](./CST816S_V1.1.en.pdf)
-- [Reference Driver] from Hynitron (https://github.com/tstellanova/hynitron_i2c_cst0xxse)
+- [Reference Driver](https://github.com/tstellanova/hynitron_i2c_cst0xxse) in C, from Hynitron. 
 
 ## License
 
