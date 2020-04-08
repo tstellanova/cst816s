@@ -7,6 +7,8 @@ This driver was originally developed for the PineTime smart watch.
 ## Status
 This is work-in-progress
 - [x] Blocking mode read of available touch events
+- [x] Reading slides and long press gestures
+- [ ] Reading click and double-click gestures
 - [ ] Interrupt handling of touch events
 - [x] Debug build
 - [x] Release build

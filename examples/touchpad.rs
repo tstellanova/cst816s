@@ -14,7 +14,7 @@ use p_hal::{delay::Delay, rng::RngExt, spim, twim};
 
 use cortex_m_rt as rt;
 use cortex_m_semihosting::hprintln;
-use cst816s::CST816S;
+use cst816s::{CST816S, TouchEvent};
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::{prelude::*, primitives::*, style::*};
 use embedded_hal::digital::v2::OutputPin;
@@ -64,6 +64,12 @@ fn main() -> ! {
 
     // random number generator peripheral
     let mut rng = dp.RNG.constrain();
+
+    // vibration motor output: drive low to activate motor
+    let mut vibe = port0.p0_16.into_push_pull_output(Level::Low).degrade();
+    delay_source.delay_ms(1u8);
+    let _ = vibe.set_high();
+
 
     // internal i2c0 bus devices: BMA421 (accel), HRS3300 (hrs), CST816S (TouchPad)
     // BMA421-INT:  P0.08
@@ -117,6 +123,7 @@ fn main() -> ! {
     touchpad.setup(&mut delay_source).unwrap();
     hprintln!("setup done").unwrap();
 
+    let mut refresh_count = 0;
     loop {
         let rand_val = rng.random_u16();
         let rand_color = Rgb565::new(
@@ -125,10 +132,35 @@ fn main() -> ! {
             (rand_val & 0x1F) as u8,
         );
 
+        if refresh_count > 10000 {
+            draw_background(&mut display, &mut display_csn);
+            refresh_count = 0;
+        }
         if let Some(evt) = touchpad.read_one_touch_event() {
+
             draw_target(&mut display, &mut display_csn, evt.x, evt.y, rand_color);
+            let vibe_time = match evt.gesture {
+                cst816s::GESTURE_LONG_PRESS => {
+                    100u8
+                }
+                cst816s::GESTURE_SINGLE_CLICK => {
+                    10u8
+                }
+                _ => {
+                    hprintln!("g: {}", evt.gesture).unwrap();
+                    0u8
+                }
+            };
+
+            if vibe_time > 0 {
+                let _ = vibe.set_low();
+                delay_source.delay_ms(vibe_time);
+                let _ = vibe.set_high();
+            }
+
         } else {
             delay_source.delay_us(1000u32);
+            refresh_count +=1;
         }
     }
 }

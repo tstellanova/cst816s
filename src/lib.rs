@@ -174,9 +174,19 @@ where
     const TOUCH_Y_L_OFF: usize = 3;
     const TOUCH_PRESURE_OFF: usize = 4;
     const TOUCH_AREA_OFF: usize = 5;
+
 }
 
 const BLOB_BUF_LEN: usize = 63; // (MAX_TOUCH_CHANNELS + RAW_TOUCH_EVENT_LEN) + GESTURE_HEADER_LEN;
+
+pub const GESTURE_NONE: u8 = 0x00;
+pub const GESTURE_SLIDE_DOWN: u8 = 0x01;
+pub const GESTURE_SLIDE_UP: u8 = 0x02;
+pub const GESTURE_SLIDE_LEFT: u8 = 0x03;
+pub const GESTURE_SLIDE_RIGHT: u8 = 0x04;
+pub const GESTURE_SINGLE_CLICK: u8 = 0x05;
+pub const GESTURE_DOUBLE_CLICK: u8 = 0x0B;
+pub const GESTURE_LONG_PRESS: u8 = 0x0C;
 
 #[cfg(test)]
 mod tests {
