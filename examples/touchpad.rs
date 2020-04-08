@@ -80,15 +80,6 @@ fn main() -> ! {
     // random number generator peripheral
     let mut rng = dp.RNG.constrain();
 
-    // // pushbutton input GPIO: P0.13
-    // let mut _user_butt = port0.p0_13.into_floating_input().degrade();
-    // // must drive this pin high to enable pushbutton
-    // let mut _user_butt_en =
-    //     port0.p0_15.into_push_pull_output(Level::High).degrade();
-    // vibration motor output: drive low to activate motor
-    // let mut vibe = port0.p0_16.into_push_pull_output(Level::Low).degrade();
-    // delay_source.delay_ms(100u8);
-    // let _ = vibe.set_high();
 
     // internal i2c0 bus devices: BMA421 (accel), HRS3300 (hrs), CST816S (TouchPad)
     // BMA421-INT:  P0.08
@@ -140,7 +131,7 @@ fn main() -> ! {
     draw_background(&mut display, &mut display_csn);
 
     // setup touchpad external interrupt pin: P0.28/AIN4 (TP_INT)
-    let touch_int  = port0.p0_28.into_floating_input().degrade();
+    let touch_int  = port0.p0_28.into_pullup_input().degrade();
     // setup touchpad reset pin: P0.10/NFC2 (TP_RESET)
     let touch_rst  = port0.p0_10.into_push_pull_output(Level::High).degrade();
 

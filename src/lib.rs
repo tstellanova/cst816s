@@ -124,17 +124,23 @@ where
     /// Reads events into the event buffer provided
     pub fn read_one_touch_event(&mut self, ) -> Option<TouchEvent> {
 
-        if self.read_registers().is_ok() {
-            let gesture_id = self.blob_buf[Self::GESTURE_ID_OFF]; //TODO report gestures
-            let num_points = (self.blob_buf[Self::NUM_POINTS_OFF] & 0x0F) as usize;
-            for i in 0..num_points {
-                let evt_start: usize = (i * Self::RAW_TOUCH_EVENT_LEN) + Self::GESTURE_HEADER_LEN;
-                if let Some(mut evt) = Self::touch_event_from_data(
-                    self.blob_buf[evt_start..evt_start + Self::RAW_TOUCH_EVENT_LEN].as_ref())
-                {
-                    evt.gesture = gesture_id;
-                    //TODO we only ever appear to get one event on the PineTime: handle more?
-                    return Some(evt)
+        // the interrupt pin should be low if there is data available;
+        // otherwise, attempting to read i2c will cause a stall
+        if let Ok(data_available) = self.pin_int.is_low() {
+            if data_available {
+                if self.read_registers().is_ok() {
+                    let gesture_id = self.blob_buf[Self::GESTURE_ID_OFF];
+                    let num_points = (self.blob_buf[Self::NUM_POINTS_OFF] & 0x0F) as usize;
+                    for i in 0..num_points {
+                        let evt_start: usize = (i * Self::RAW_TOUCH_EVENT_LEN) + Self::GESTURE_HEADER_LEN;
+                        if let Some(mut evt) = Self::touch_event_from_data(
+                            self.blob_buf[evt_start..evt_start + Self::RAW_TOUCH_EVENT_LEN].as_ref())
+                        {
+                            evt.gesture = gesture_id;
+                            //TODO we only ever appear to get one event on the PineTime: handle more?
+                            return Some(evt)
+                        }
+                    }
                 }
             }
         }
