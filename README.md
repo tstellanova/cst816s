@@ -1,7 +1,7 @@
 ## cst816s 
 
 A rust no_std driver for the
-Hynan CST816S touchpad device. 
+Hynan / Hynitron CST816S touchpad device. 
 This driver was originally developed for the PineTime smart watch.
 
 ## Status
@@ -38,6 +38,7 @@ cargo run --example touchpad
 
 ## Resources
 - [Datasheet](./CST816S_V1.1.en.pdf)
+- [Reference Driver] from Hynitron (https://github.com/tstellanova/hynitron_i2c_cst0xxse)
 
 ## License
 
