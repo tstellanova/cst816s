@@ -15,7 +15,7 @@ use p_hal::{delay::Delay, rng::RngExt, spim, twim};
 use cortex_m_rt as rt;
 use cortex_m_semihosting::hprintln;
 use cst816s::{CST816S};
-use embedded_graphics::pixelcolor::Rgb565;
+use embedded_graphics::pixelcolor::{raw::RawU16, Rgb565};
 use embedded_graphics::{prelude::*, primitives::*, style::*};
 use embedded_hal::digital::v2::OutputPin;
 use rt::entry;
@@ -119,11 +119,7 @@ fn main() -> ! {
     let mut refresh_count = 0;
     loop {
         let rand_val = rng.random_u16();
-        let rand_color = Rgb565::new(
-            (rand_val >> 11) as u8,
-            (rand_val >> 5) as u8 & 0x3F,
-            (rand_val & 0x1F) as u8,
-        );
+        let rand_color = Rgb565::from(RawU16::new(rand_val));
 
         if refresh_count > 10000 {
             draw_background(&mut display);
