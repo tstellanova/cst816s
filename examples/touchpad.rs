@@ -35,16 +35,6 @@ const HALF_SCREEN_WIDTH: i32 = SCREEN_WIDTH / 2;
 const MIN_SCREEN_DIM: i32 = SCREEN_HEIGHT;
 const SCREEN_RADIUS: u32 = (MIN_SCREEN_DIM / 2) as u32;
 
-type DisplayType<'a> = st7789::ST7789<
-    shared_bus::proxy::BusProxy<
-        'a,
-        cortex_m::interrupt::Mutex<core::cell::RefCell<Spim0PortType>>,
-        Spim0PortType,
-    >,
-    DisplaySckPinType,
-    DisplayMosiPinType,
->;
-
 ///
 /// This example was written and tested for the PineTime smart watch
 ///
@@ -96,23 +86,25 @@ fn main() -> ! {
     // backlight control pin for display: always on
     let mut _backlight = port0.p0_22.into_push_pull_output(Level::Low);
     // SPI chip select (CSN) for the display.
-    let mut display_csn = port0.p0_25.into_push_pull_output(Level::High);
+    let display_csn = port0.p0_25.into_push_pull_output(Level::High);
     // data/clock switch pin for display
     let display_dc = port0.p0_18.into_push_pull_output(Level::Low);
     // reset pin for display
     let display_rst = port0.p0_26.into_push_pull_output(Level::Low);
 
     // create display driver
-    let mut display = ST7789::new(
+    let mut display = st7789::new_display_driver(
         spi_bus0.acquire(),
+        display_csn,
         display_dc,
         display_rst,
         SCREEN_WIDTH as u16,
         SCREEN_HEIGHT as u16,
     );
+    display.init(&mut delay_source).unwrap();
+    display.set_orientation(&Orientation::Portrait).unwrap();
 
-    configure_display(&mut display, &mut display_csn, &mut delay_source);
-    draw_background(&mut display, &mut display_csn);
+    draw_background(&mut display);
 
     // setup touchpad external interrupt pin: P0.28/AIN4 (TP_INT)
     let touch_int = port0.p0_28.into_pullup_input().degrade();
@@ -133,12 +125,12 @@ fn main() -> ! {
         );
 
         if refresh_count > 10000 {
-            draw_background(&mut display, &mut display_csn);
+            draw_background(&mut display);
             refresh_count = 0;
         }
         if let Some(evt) = touchpad.read_one_touch_event() {
 
-            draw_target(&mut display, &mut display_csn, evt.x, evt.y, rand_color);
+            draw_target(&mut display,  evt.x, evt.y, rand_color);
             let vibe_time = match evt.gesture {
                 cst816s::GESTURE_LONG_PRESS => {
                     100u8
@@ -165,44 +157,27 @@ fn main() -> ! {
     }
 }
 
-fn configure_display(
-    display: &mut DisplayType,
-    display_csn: &mut impl OutputPin,
-    delay_source: &mut (impl DelayMs<u8> + DelayUs<u32>),
-) {
-    let _ = display_csn.set_low();
-    display.init(delay_source).unwrap();
-    display.set_orientation(&Orientation::Portrait).unwrap();
-    let _ = display_csn.set_high();
-}
 
-fn draw_background(display: &mut DisplayType, display_csn: &mut impl OutputPin) {
-    if let Ok(_) = display_csn.set_low() {
-        let clear_bg = Rectangle::new(Point::new(0, 0), Point::new(SCREEN_WIDTH, SCREEN_HEIGHT))
-            .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK));
-        clear_bg.draw(display).unwrap();
+fn draw_background(display: &mut impl  DrawTarget<Rgb565>) {
+    let clear_bg = Rectangle::new(Point::new(0, 0), Point::new(SCREEN_WIDTH, SCREEN_HEIGHT))
+        .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK));
+    let _ = clear_bg.draw(display);
 
-        let center_circle = Circle::new(
-            Point::new(HALF_SCREEN_WIDTH, SCREEN_HEIGHT / 2),
-            SCREEN_RADIUS,
-        )
-        .into_styled(PrimitiveStyle::with_stroke(Rgb565::YELLOW, 4));
-        center_circle.draw(display).unwrap();
-    }
-    let _ = display_csn.set_high();
+    let center_circle = Circle::new(
+        Point::new(HALF_SCREEN_WIDTH, SCREEN_HEIGHT / 2),
+        SCREEN_RADIUS,
+    )
+    .into_styled(PrimitiveStyle::with_stroke(Rgb565::YELLOW, 4));
+    let _ = center_circle.draw(display);
 }
 
 fn draw_target(
-    display: &mut DisplayType,
-    display_csn: &mut impl OutputPin,
+    display:  &mut impl DrawTarget<Rgb565>,
     x_pos: i32,
     y_pos: i32,
     stroke_color: Rgb565,
 ) {
-    if let Ok(_) = display_csn.set_low() {
-        let targ_circle = Circle::new(Point::new(x_pos, y_pos), 10)
-            .into_styled(PrimitiveStyle::with_stroke(stroke_color, 4));
-        targ_circle.draw(display).unwrap();
-    }
-    let _ = display_csn.set_high();
+    let targ_circle = Circle::new(Point::new(x_pos, y_pos), 10)
+        .into_styled(PrimitiveStyle::with_stroke(stroke_color, 4));
+    let _ = targ_circle.draw(display);
 }
