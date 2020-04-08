@@ -14,14 +14,15 @@ use p_hal::{delay::Delay, rng::RngExt, spim, twim};
 
 use cortex_m_rt as rt;
 use cortex_m_semihosting::hprintln;
-use cst816s::{CST816S, TouchEvent};
+use cst816s::{CST816S};
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::{prelude::*, primitives::*, style::*};
 use embedded_hal::digital::v2::OutputPin;
 use rt::entry;
-use st7789::{Orientation, ST7789};
+use st7789::{Orientation};
 
 use embedded_hal::blocking::delay::{DelayMs, DelayUs};
+use nrf52832_hal::prelude::ClocksExt;
 
 pub type HalSpimError = p_hal::spim::Error;
 
@@ -46,7 +47,7 @@ fn main() -> ! {
     // PineTime has a 32 MHz HSE (HFXO) and a 32.768 kHz LSE (LFXO)
     // Optimize clock config
     let dp = pac::Peripherals::take().unwrap();
-    // let _clockos = dp.CLOCK.constrain().enable_ext_hfosc();
+    let _clockit = dp.CLOCK.constrain().enable_ext_hfosc();
 
     let port0 = dp.P0.split();
 
@@ -161,14 +162,14 @@ fn main() -> ! {
 fn draw_background(display: &mut impl  DrawTarget<Rgb565>) {
     let clear_bg = Rectangle::new(Point::new(0, 0), Point::new(SCREEN_WIDTH, SCREEN_HEIGHT))
         .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK));
-    let _ = clear_bg.draw(display);
+    clear_bg.draw(display).map_err(|_| ()).unwrap();
 
     let center_circle = Circle::new(
         Point::new(HALF_SCREEN_WIDTH, SCREEN_HEIGHT / 2),
         SCREEN_RADIUS,
     )
     .into_styled(PrimitiveStyle::with_stroke(Rgb565::YELLOW, 4));
-    let _ = center_circle.draw(display);
+    center_circle.draw(display).map_err(|_| ()).unwrap();
 }
 
 fn draw_target(
@@ -179,5 +180,5 @@ fn draw_target(
 ) {
     let targ_circle = Circle::new(Point::new(x_pos, y_pos), 10)
         .into_styled(PrimitiveStyle::with_stroke(stroke_color, 4));
-    let _ = targ_circle.draw(display);
+    targ_circle.draw(display).map_err(|_| ()).unwrap();
 }
