@@ -14,7 +14,6 @@ use p_hal::{rng::RngExt, spim, twim, delay::Delay};
 
 
 
-use arrayvec::{ArrayString, ArrayVec};
 use core::fmt;
 use core::fmt::Arguments;
 use cortex_m_rt as rt;
@@ -26,7 +25,7 @@ use embedded_graphics::{
 use embedded_hal::digital::v2::OutputPin;
 use rt::entry;
 use st7789::{Orientation, ST7789};
-use cst816s::{CST816S, MAX_TOUCH_CHANNELS, TouchEvent};
+use cst816s::{CST816S, TouchEvent};
 
 use embedded_hal::blocking::delay::{DelayMs,DelayUs};
 use core::convert::TryInto;
@@ -72,7 +71,7 @@ fn main() -> ! {
     // PineTime has a 32 MHz HSE (HFXO) and a 32.768 kHz LSE (LFXO)
     // Optimize clock config
     let dp = pac::Peripherals::take().unwrap();
-    let _clockos = dp.CLOCK.constrain().enable_ext_hfosc();
+    // let _clockos = dp.CLOCK.constrain().enable_ext_hfosc();
 
     let port0 = dp.P0.split();
 
@@ -149,17 +148,16 @@ fn main() -> ! {
         i2c_port,
         touch_int,
         touch_rst);
-    hprintln!("setup...").unwrap();
     touchpad.setup(&mut delay_source).unwrap();
     hprintln!("setup done").unwrap();
 
     loop {
-        // let rand_x = (rng.random_u8() as i32) % (3*SCREEN_WIDTH/4);
-        // let rand_y = (rng.random_u8() as i32) % (3*SCREEN_HEIGHT/4);
-        // draw_target(&mut display, &mut display_csn, rand_x, rand_y,Rgb565::RED);
+        let rand_val = rng.random_u16();
+        let rand_color = Rgb565::new((rand_val >> 11) as u8, (rand_val >> 5) as u8 & 0x3F, (rand_val & 0x1F) as u8);
 
         if let Some(evt) = touchpad.read_one_touch_event() {
-            hprintln!("{:?}", evt).unwrap();
+            draw_target(&mut display, &mut display_csn, evt.x, evt.y,rand_color);
+            //hprintln!("{:?}", evt).unwrap();
         }
         else {
             delay_source.delay_us(1000u32);

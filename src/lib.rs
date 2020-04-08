@@ -3,12 +3,8 @@
 
 use core::fmt::Debug;
 
-
 use embedded_hal as hal;
-use hal::blocking::i2c::{WriteRead}; //, , Read};
 use hal::blocking::delay::{DelayUs};
-use arrayvec::ArrayVec;
-// use hal::digital::v2::{InputPin, StatefulOutputPin};
 
 
 /// Errors in this crate
@@ -81,14 +77,9 @@ where
     pub fn read_registers(&mut self)
         -> Result<(), Error<CommE, PinE>> {
 
-        // //TODO does write_read work for this device? or do we need separate writes and reads?
-        // self.i2c.write_read(Self::DEFAULT_I2C_ADDRESS,
-        //                     &[Self::REG_FIRST],
-        //                     self.blob_buf.as_mut()).map_err(Error::Comm)?;
-
-        self.i2c.write(Self::DEFAULT_I2C_ADDRESS, &[Self::REG_FIRST]).map_err(Error::Comm)?;
-        self.i2c.read(Self::DEFAULT_I2C_ADDRESS, self.blob_buf.as_mut()).map_err(Error::Comm)?;
-
+        self.i2c.write_read(Self::DEFAULT_I2C_ADDRESS,
+                            &[Self::REG_FIRST],
+                            self.blob_buf.as_mut()).map_err(Error::Comm)?;
         Ok(())
     }
 
@@ -157,6 +148,9 @@ where
     /// Number of bytes for a single touch event
     pub const RAW_TOUCH_EVENT_LEN: usize = 6;
 
+    /// In essence, max number of fingers
+    pub const MAX_TOUCH_CHANNELS: usize = 10;
+
     /// The first register on the device
     const REG_FIRST:u8 = 	0x00;
 
@@ -180,10 +174,7 @@ where
 }
 
 
-/// In essence, max number of fingers
-pub const MAX_TOUCH_CHANNELS: usize = 10;
-
-const BLOB_BUF_LEN: usize = 63; // (MAX_TOUCH_CHANNELS + CST816S::RAW_TOUCH_EVENT_LEN) + CST816S::GESTURE_HEADER_LEN;
+const BLOB_BUF_LEN: usize = 63; // (MAX_TOUCH_CHANNELS + RAW_TOUCH_EVENT_LEN) + GESTURE_HEADER_LEN;
 
 
 
