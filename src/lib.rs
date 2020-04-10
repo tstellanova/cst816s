@@ -192,7 +192,7 @@ where
 const BLOB_BUF_LEN: usize = (10 * 6) + 3; // (MAX_TOUCH_CHANNELS * RAW_TOUCH_EVENT_LEN) + GESTURE_HEADER_LEN;
 const ONE_EVENT_LEN: usize = 6 + 3; // RAW_TOUCH_EVENT_LEN + GESTURE_HEADER_LEN
 
-#[derive(Debug)]
+#[derive(Debug,PartialEq)]
 #[repr(u8)]
 pub enum TouchGesture {
     None = 0x00,
