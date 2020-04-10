@@ -1,11 +1,7 @@
 #![no_std]
 #![no_main]
 
-// configure panic behavior:
-#[cfg(not(debug_assertions))]
 extern crate panic_halt; // you can put a breakpoint on `rust_begin_unwind` to catch panics
-#[cfg(debug_assertions)]
-extern crate panic_semihosting; // logs messages to the host stderr; requires a debugger
 
 use nrf52832_hal as p_hal;
 use p_hal::gpio::{GpioExt, Level};
@@ -13,13 +9,15 @@ use p_hal::nrf52832_pac as pac;
 use p_hal::{delay::Delay, rng::RngExt, spim, twim};
 
 use cortex_m_rt as rt;
-use cortex_m_semihosting::hprintln;
-use cst816s::{CST816S};
+use cst816s::{
+    TouchEvent, CST816S, GESTURE_LONG_PRESS, GESTURE_SINGLE_CLICK, GESTURE_SLIDE_DOWN,
+    GESTURE_SLIDE_LEFT, GESTURE_SLIDE_RIGHT, GESTURE_SLIDE_UP,
+};
 use embedded_graphics::pixelcolor::{raw::RawU16, Rgb565};
 use embedded_graphics::{prelude::*, primitives::*, style::*};
 use embedded_hal::digital::v2::OutputPin;
 use rt::entry;
-use st7789::{Orientation};
+use st7789::Orientation;
 
 use embedded_hal::blocking::delay::{DelayMs, DelayUs};
 use nrf52832_hal::prelude::ClocksExt;
@@ -51,16 +49,12 @@ fn main() -> ! {
 
     let port0 = dp.P0.split();
 
-    hprintln!("\r\n--- BEGIN ---").unwrap();
-
     // random number generator peripheral
     let mut rng = dp.RNG.constrain();
 
     // vibration motor output: drive low to activate motor
-    let mut vibe = port0.p0_16.into_push_pull_output(Level::Low).degrade();
-    delay_source.delay_ms(1u8);
-    let _ = vibe.set_high();
-
+    let mut vibe = port0.p0_16.into_push_pull_output(Level::High).degrade();
+    pulse_vibe(&mut vibe, &mut delay_source, 10);
 
     // internal i2c0 bus devices: BMA421 (accel), HRS3300 (hrs), CST816S (TouchPad)
     // BMA421-INT:  P0.08
@@ -114,48 +108,37 @@ fn main() -> ! {
 
     let mut touchpad = CST816S::new(i2c_port, touch_int, touch_rst);
     touchpad.setup(&mut delay_source).unwrap();
-    hprintln!("setup done").unwrap();
 
     let mut refresh_count = 0;
     loop {
         let rand_val = rng.random_u16();
         let rand_color = Rgb565::from(RawU16::new(rand_val));
 
-        if refresh_count > 10000 {
-            draw_background(&mut display);
-            refresh_count = 0;
-        }
-        if let Some(evt) = touchpad.read_one_touch_event() {
-
-            draw_target(&mut display,  evt.x, evt.y, rand_color);
-            let vibe_time = match evt.gesture {
-                cst816s::GESTURE_LONG_PRESS => {
-                    100u8
-                }
-                cst816s::GESTURE_SINGLE_CLICK => {
-                    10u8
-                }
-                _ => {
-                    hprintln!("g: {}", evt.gesture).unwrap();
-                    0u8
-                }
-            };
-
-            if vibe_time > 0 {
-                let _ = vibe.set_low();
-                delay_source.delay_ms(vibe_time);
-                let _ = vibe.set_high();
+        if let Some(evt) = touchpad.read_one_touch_event(true) {
+            refresh_count += 1;
+            if refresh_count > 100 {
+                draw_background(&mut display);
+                refresh_count = 0;
             }
 
+            draw_marker(&mut display, &evt, rand_color);
+            let vibe_time = match evt.gesture {
+                cst816s::GESTURE_LONG_PRESS => {
+                    refresh_count = 100;
+                    50_000
+                }
+                cst816s::GESTURE_SINGLE_CLICK => 5_000,
+                _ => 0,
+            };
+
+            pulse_vibe(&mut vibe, &mut delay_source, vibe_time);
         } else {
-            delay_source.delay_us(1000u32);
-            refresh_count +=1;
+            delay_source.delay_us(1u32);
         }
     }
 }
 
-
-fn draw_background(display: &mut impl  DrawTarget<Rgb565>) {
+fn draw_background(display: &mut impl DrawTarget<Rgb565>) {
     let clear_bg = Rectangle::new(Point::new(0, 0), Point::new(SCREEN_WIDTH, SCREEN_HEIGHT))
         .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK));
     clear_bg.draw(display).map_err(|_| ()).unwrap();
@@ -168,13 +151,56 @@ fn draw_background(display: &mut impl  DrawTarget<Rgb565>) {
     center_circle.draw(display).map_err(|_| ()).unwrap();
 }
 
-fn draw_target(
-    display:  &mut impl DrawTarget<Rgb565>,
-    x_pos: i32,
-    y_pos: i32,
-    stroke_color: Rgb565,
-) {
-    let targ_circle = Circle::new(Point::new(x_pos, y_pos), 10)
-        .into_styled(PrimitiveStyle::with_stroke(stroke_color, 4));
-    targ_circle.draw(display).map_err(|_| ()).unwrap();
+const SWIPE_LENGTH: i32 = 20;
+const SWIPE_WIDTH: i32 = 2;
+
+/// Draw an indicator of the kind of gesture we detected
+fn draw_marker(display: &mut impl DrawTarget<Rgb565>, event: &TouchEvent, color: Rgb565) {
+    let x_pos = event.x;
+    let y_pos = event.y;
+
+    match event.gesture {
+        GESTURE_SLIDE_LEFT | GESTURE_SLIDE_RIGHT => {
+            Rectangle::new(
+                Point::new(x_pos - SWIPE_LENGTH, y_pos - SWIPE_WIDTH),
+                Point::new(x_pos + SWIPE_LENGTH, y_pos + SWIPE_WIDTH),
+            )
+            .into_styled(PrimitiveStyle::with_fill(color))
+            .draw(display)
+            .map_err(|_| ())
+            .unwrap();
+        }
+        GESTURE_SLIDE_UP | GESTURE_SLIDE_DOWN => {
+            Rectangle::new(
+                Point::new(x_pos - SWIPE_WIDTH, y_pos - SWIPE_LENGTH),
+                Point::new(x_pos + SWIPE_WIDTH, y_pos + SWIPE_LENGTH),
+            )
+            .into_styled(PrimitiveStyle::with_fill(color))
+            .draw(display)
+            .map_err(|_| ())
+            .unwrap();
+        }
+        GESTURE_SINGLE_CLICK => Circle::new(Point::new(x_pos, y_pos), 20)
+            .into_styled(PrimitiveStyle::with_fill(color))
+            .draw(display)
+            .map_err(|_| ())
+            .unwrap(),
+        GESTURE_LONG_PRESS => {
+            Circle::new(Point::new(x_pos, y_pos), 40)
+                .into_styled(PrimitiveStyle::with_stroke(color, 4))
+                .draw(display)
+                .map_err(|_| ())
+                .unwrap();
+        }
+        _ => {}
+    }
+}
+
+/// Pulse the vibration motor briefly
+fn pulse_vibe(vibe: &mut impl OutputPin, delay_source: &mut impl DelayUs<u32>, micros: u32) {
+    if micros > 0 {
+        let _ = vibe.set_low();
+        delay_source.delay_us(micros);
+        let _ = vibe.set_high();
+    }
 }

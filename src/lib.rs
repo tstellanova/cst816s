@@ -82,6 +82,17 @@ where
         Ok(())
     }
 
+    pub fn read_truncated_registers(&mut self) -> Result<(), Error<CommE, PinE>> {
+        self.i2c
+            .write_read(
+                Self::DEFAULT_I2C_ADDRESS,
+                &[Self::REG_FIRST],
+                self.blob_buf[0..ONE_EVENT_LEN].as_mut(),
+            )
+            .map_err(Error::Comm)?;
+        Ok(())
+    }
+
     ///
     /// Translate raw register data into touch events
     ///
@@ -117,33 +128,36 @@ where
         Some(touch)
     }
 
-    /// The main method for getting the current set of touch events
-    /// Reads events into the event buffer provided
-    pub fn read_one_touch_event(&mut self) -> Option<TouchEvent> {
+    /// The main method for getting the current touch event.
+    /// Returns a touch event if available.
+    ///
+    /// - `check_int_pin` -- True if we should check the interrupt pin before attempting i2c read.
+    /// On some devices, attempting to read registers when there is no data available results
+    /// in a hang in the i2c read.
+    ///
+    pub fn read_one_touch_event(&mut self, check_int_pin: bool) -> Option<TouchEvent> {
+        let mut one_event: Option<TouchEvent> = None;
         // the interrupt pin should be low if there is data available;
         // otherwise, attempting to read i2c will cause a stall
-        if let Ok(data_available) = self.pin_int.is_low() {
-            if data_available {
-                if self.read_registers().is_ok() {
-                    let gesture_id = self.blob_buf[Self::GESTURE_ID_OFF];
-                    let num_points = (self.blob_buf[Self::NUM_POINTS_OFF] & 0x0F) as usize;
-                    for i in 0..num_points {
-                        let evt_start: usize =
-                            (i * Self::RAW_TOUCH_EVENT_LEN) + Self::GESTURE_HEADER_LEN;
-                        if let Some(mut evt) = Self::touch_event_from_data(
-                            self.blob_buf[evt_start..evt_start + Self::RAW_TOUCH_EVENT_LEN]
-                                .as_ref(),
-                        ) {
-                            evt.gesture = gesture_id;
-                            //TODO we only ever appear to get one event on the PineTime: handle more?
-                            return Some(evt);
-                        }
-                    }
+        let data_available = !check_int_pin || self.pin_int.is_low().unwrap_or(false);
+        if data_available {
+            if self.read_truncated_registers().is_ok() {
+                let gesture_id = self.blob_buf[Self::GESTURE_ID_OFF];
+                let num_points = (self.blob_buf[Self::NUM_POINTS_OFF] & 0x0F) as usize;
+                if num_points > 1 {
+                    //In testing with a PineTime we only ever seem to get one event
+                    panic!("num_points {}", num_points);
+                }
+                let evt_start: usize = Self::GESTURE_HEADER_LEN;
+                if let Some(mut evt) = Self::touch_event_from_data(
+                    self.blob_buf[evt_start..evt_start + Self::RAW_TOUCH_EVENT_LEN].as_ref(),
+                ) {
+                    evt.gesture = gesture_id;
+                    one_event = Some(evt);
                 }
             }
         }
-
-        None
+        one_event
     }
 
     const DEFAULT_I2C_ADDRESS: u8 = 0x15;
@@ -174,10 +188,10 @@ where
     const TOUCH_Y_L_OFF: usize = 3;
     const TOUCH_PRESURE_OFF: usize = 4;
     const TOUCH_AREA_OFF: usize = 5;
-
 }
 
-const BLOB_BUF_LEN: usize = 63; // (MAX_TOUCH_CHANNELS + RAW_TOUCH_EVENT_LEN) + GESTURE_HEADER_LEN;
+const BLOB_BUF_LEN: usize = (10 * 6) + 3; // (MAX_TOUCH_CHANNELS * RAW_TOUCH_EVENT_LEN) + GESTURE_HEADER_LEN;
+const ONE_EVENT_LEN: usize = 6 + 3; // RAW_TOUCH_EVENT_LEN + GESTURE_HEADER_LEN
 
 pub const GESTURE_NONE: u8 = 0x00;
 pub const GESTURE_SLIDE_DOWN: u8 = 0x01;
