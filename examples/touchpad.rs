@@ -9,10 +9,7 @@ use p_hal::nrf52832_pac as pac;
 use p_hal::{delay::Delay, rng::RngExt, spim, twim};
 
 use cortex_m_rt as rt;
-use cst816s::{
-    TouchEvent, CST816S, GESTURE_LONG_PRESS, GESTURE_SINGLE_CLICK, GESTURE_SLIDE_DOWN,
-    GESTURE_SLIDE_LEFT, GESTURE_SLIDE_RIGHT, GESTURE_SLIDE_UP,
-};
+use cst816s::{TouchEvent, TouchGesture, CST816S};
 use embedded_graphics::pixelcolor::{raw::RawU16, Rgb565};
 use embedded_graphics::{prelude::*, primitives::*, style::*};
 use embedded_hal::digital::v2::OutputPin;
@@ -116,22 +113,22 @@ fn main() -> ! {
 
         if let Some(evt) = touchpad.read_one_touch_event(true) {
             refresh_count += 1;
-            if refresh_count > 100 {
-                draw_background(&mut display);
-                refresh_count = 0;
-            }
 
             draw_marker(&mut display, &evt, rand_color);
             let vibe_time = match evt.gesture {
-                cst816s::GESTURE_LONG_PRESS => {
-                    refresh_count = 100;
+                TouchGesture::LongPress => {
+                    refresh_count = 1000;
                     50_000
                 }
-                cst816s::GESTURE_SINGLE_CLICK => 5_000,
+                TouchGesture::SingleClick => 5_000,
                 _ => 0,
             };
 
             pulse_vibe(&mut vibe, &mut delay_source, vibe_time);
+            if refresh_count > 40 {
+                draw_background(&mut display);
+                refresh_count = 0;
+            }
         } else {
             delay_source.delay_us(1u32);
         }
@@ -160,7 +157,7 @@ fn draw_marker(display: &mut impl DrawTarget<Rgb565>, event: &TouchEvent, color:
     let y_pos = event.y;
 
     match event.gesture {
-        GESTURE_SLIDE_LEFT | GESTURE_SLIDE_RIGHT => {
+        TouchGesture::SlideLeft | TouchGesture::SlideRight => {
             Rectangle::new(
                 Point::new(x_pos - SWIPE_LENGTH, y_pos - SWIPE_WIDTH),
                 Point::new(x_pos + SWIPE_LENGTH, y_pos + SWIPE_WIDTH),
@@ -170,7 +167,7 @@ fn draw_marker(display: &mut impl DrawTarget<Rgb565>, event: &TouchEvent, color:
             .map_err(|_| ())
             .unwrap();
         }
-        GESTURE_SLIDE_UP | GESTURE_SLIDE_DOWN => {
+        TouchGesture::SlideUp | TouchGesture::SlideDown => {
             Rectangle::new(
                 Point::new(x_pos - SWIPE_WIDTH, y_pos - SWIPE_LENGTH),
                 Point::new(x_pos + SWIPE_WIDTH, y_pos + SWIPE_LENGTH),
@@ -180,12 +177,12 @@ fn draw_marker(display: &mut impl DrawTarget<Rgb565>, event: &TouchEvent, color:
             .map_err(|_| ())
             .unwrap();
         }
-        GESTURE_SINGLE_CLICK => Circle::new(Point::new(x_pos, y_pos), 20)
+        TouchGesture::SingleClick => Circle::new(Point::new(x_pos, y_pos), 20)
             .into_styled(PrimitiveStyle::with_fill(color))
             .draw(display)
             .map_err(|_| ())
             .unwrap(),
-        GESTURE_LONG_PRESS => {
+        TouchGesture::LongPress => {
             Circle::new(Point::new(x_pos, y_pos), 40)
                 .into_styled(PrimitiveStyle::with_stroke(color, 4))
                 .draw(display)

@@ -26,7 +26,7 @@ pub struct TouchEvent {
     pub x: i32,
     pub y: i32,
     /// the gesture that this touch is part of
-    pub gesture: u8,
+    pub gesture: TouchGesture,
     /// 0 down, 1 lift, 2 contact
     pub action: u8,
     /// identifies the finger that touched (0-9)
@@ -100,7 +100,7 @@ where
         let mut touch = TouchEvent {
             x: 0,
             y: 0,
-            gesture: 0,
+            gesture: TouchGesture::None,
             action: 0,
             finger_id: 0,
             pressure: 0,
@@ -137,23 +137,22 @@ where
     ///
     pub fn read_one_touch_event(&mut self, check_int_pin: bool) -> Option<TouchEvent> {
         let mut one_event: Option<TouchEvent> = None;
-        // the interrupt pin should be low if there is data available;
+        // the interrupt pin should typically be low if there is data available;
         // otherwise, attempting to read i2c will cause a stall
         let data_available = !check_int_pin || self.pin_int.is_low().unwrap_or(false);
         if data_available {
             if self.read_truncated_registers().is_ok() {
                 let gesture_id = self.blob_buf[Self::GESTURE_ID_OFF];
                 let num_points = (self.blob_buf[Self::NUM_POINTS_OFF] & 0x0F) as usize;
-                if num_points > 1 {
+                if num_points <= Self::MAX_TOUCH_CHANNELS {
                     //In testing with a PineTime we only ever seem to get one event
-                    panic!("num_points {}", num_points);
-                }
-                let evt_start: usize = Self::GESTURE_HEADER_LEN;
-                if let Some(mut evt) = Self::touch_event_from_data(
-                    self.blob_buf[evt_start..evt_start + Self::RAW_TOUCH_EVENT_LEN].as_ref(),
-                ) {
-                    evt.gesture = gesture_id;
-                    one_event = Some(evt);
+                    let evt_start: usize = Self::GESTURE_HEADER_LEN;
+                    if let Some(mut evt) = Self::touch_event_from_data(
+                        self.blob_buf[evt_start..evt_start + Self::RAW_TOUCH_EVENT_LEN].as_ref(),
+                    ) {
+                        evt.gesture = gesture_id.into();
+                        one_event = Some(evt);
+                    }
                 }
             }
         }
@@ -193,14 +192,33 @@ where
 const BLOB_BUF_LEN: usize = (10 * 6) + 3; // (MAX_TOUCH_CHANNELS * RAW_TOUCH_EVENT_LEN) + GESTURE_HEADER_LEN;
 const ONE_EVENT_LEN: usize = 6 + 3; // RAW_TOUCH_EVENT_LEN + GESTURE_HEADER_LEN
 
-pub const GESTURE_NONE: u8 = 0x00;
-pub const GESTURE_SLIDE_DOWN: u8 = 0x01;
-pub const GESTURE_SLIDE_UP: u8 = 0x02;
-pub const GESTURE_SLIDE_LEFT: u8 = 0x03;
-pub const GESTURE_SLIDE_RIGHT: u8 = 0x04;
-pub const GESTURE_SINGLE_CLICK: u8 = 0x05;
-pub const GESTURE_DOUBLE_CLICK: u8 = 0x0B;
-pub const GESTURE_LONG_PRESS: u8 = 0x0C;
+#[derive(Debug)]
+#[repr(u8)]
+pub enum TouchGesture {
+    None = 0x00,
+    SlideDown = 0x01,
+    SlideUp = 0x02,
+    SlideLeft = 0x03,
+    SlideRight = 0x04,
+    SingleClick = 0x05,
+    DoubleClick = 0x0B,
+    LongPress = 0x0C,
+}
+
+impl core::convert::From<u8> for TouchGesture {
+    fn from(val: u8) -> Self {
+        match val {
+            0x01 => Self::SlideDown,
+            0x02 => Self::SlideUp,
+            0x03 => Self::SlideLeft,
+            0x04 => Self::SlideRight,
+            0x05 => Self::SingleClick,
+            0x0B => Self::DoubleClick,
+            0x0C => Self::LongPress,
+            _ => Self::None,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
