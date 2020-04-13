@@ -1,6 +1,6 @@
 [package]
 name = "cst816s"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Todd Stellanova <tstellanova@users.noreply.github.com>"]
 edition = "2018"
 description = "CST816S touchscreen driver for embedded hal / no_std"
@@ -27,8 +27,7 @@ embedded-hal = {version ="0.2.3", features = ["unproven"] }
 [dev-dependencies]
 cortex-m-rt = "0.6.12"
 nrf52832-hal = {version = "0.8.1", default-features = false, features = ["xxAA-package", "rt"]}
-panic-halt = "0.2.0"
+panic-rtt-core = {version="0.1.0"}
 st7789 = { git = "https://github.com/tstellanova/st7789" }
-#st7789 = { path = "../st7789"}
 shared-bus = {version = "0.1.4", features = ["cortexm"] }
 embedded-graphics = "0.6.0"

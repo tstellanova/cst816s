@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-extern crate panic_halt; // you can put a breakpoint on `rust_begin_unwind` to catch panics
+use panic_rtt_core::{self, rtt_init_print, rprintln};
 
 use nrf52832_hal as p_hal;
 use p_hal::gpio::{GpioExt, Level};
@@ -36,6 +36,8 @@ const SCREEN_RADIUS: u32 = (MIN_SCREEN_DIM / 2) as u32;
 ///
 #[entry]
 fn main() -> ! {
+    rtt_init_print!(NoBlockTrim);
+
     let cp = pac::CorePeripherals::take().unwrap();
     let mut delay_source = Delay::new(cp.SYST);
 
@@ -52,6 +54,8 @@ fn main() -> ! {
     // vibration motor output: drive low to activate motor
     let mut vibe = port0.p0_16.into_push_pull_output(Level::High).degrade();
     pulse_vibe(&mut vibe, &mut delay_source, 10);
+
+    rprintln!("\r\n--- BEGIN ---");
 
     // internal i2c0 bus devices: BMA421 (accel), HRS3300 (hrs), CST816S (TouchPad)
     // BMA421-INT:  P0.08
@@ -113,6 +117,7 @@ fn main() -> ! {
 
         if let Some(evt) = touchpad.read_one_touch_event(true) {
             refresh_count += 1;
+            rprintln!("{:?}",evt);
 
             draw_marker(&mut display, &evt, rand_color);
             let vibe_time = match evt.gesture {
