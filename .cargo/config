@@ -1,7 +1,7 @@
 [target.thumbv7em-none-eabihf]
 # runner = 'arm-none-eabi-gdb -q -x .gdbinit'
-# runner = "arm-none-eabi-gdb -q -x openocd.gdb"
-runner = "arm-none-eabi-gdb -q -x segger.gdb"
+runner = "arm-none-eabi-gdb -x openocd.gdb -q"
+#runner = "arm-none-eabi-gdb -q -x segger.gdb"
 
 rustflags = [
     "-C", "link-arg=-Tlink.x",
