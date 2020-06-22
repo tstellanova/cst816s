@@ -40,8 +40,8 @@ define hook-quit
     set confirm off
 end
 
+load
 monitor reset halt
-# load
 
 # start the process but immediately halt the processor
 # stepi

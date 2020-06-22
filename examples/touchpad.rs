@@ -48,7 +48,7 @@ fn main() -> ! {
     let mut vibe = port0.p0_16.into_push_pull_output(Level::High).degrade();
     pulse_vibe(&mut vibe, &mut delay_source, 10);
 
-    hprintln!("Starting...").unwrap();
+    hprintln!("\r\n--- BEGIN ---").unwrap();
 
     // internal i2c0 bus devices: BMA421 (accel), HRS3300 (hrs), CST816S (TouchPad)
     // BMA421-INT:  P0.08
