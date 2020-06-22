@@ -2,33 +2,22 @@
 #![no_main]
 
 extern crate cortex_m_rt as rt;
-extern crate panic_halt;
 extern crate nrf52832_hal;
+extern crate panic_halt;
 
-// use nrf52832_hal as p_hal;
-// use p_hal::gpio::{GpioExt, Level};
-// use p_hal::nrf52832_pac as pac;
-// use p_hal::{delay::Delay, rng::RngExt, spim, twim};
-use nrf52832_hal::prelude::*;
-use nrf52832_hal::{self as hal, pac, Delay, Rng, spim, twim, gpio::Level};
 use nrf52832_hal::gpio::p0::Parts;
+use nrf52832_hal::{self as hal, gpio::Level, pac, spim, twim, Delay, Rng};
 
+use cortex_m_rt::entry;
 use cortex_m_semihosting::hprintln;
 use cst816s::{TouchEvent, TouchGesture, CST816S};
+use display_interface_spi::SPIInterfaceNoCS;
 use embedded_graphics::pixelcolor::{raw::RawU16, Rgb565};
 use embedded_graphics::{prelude::*, primitives::*, style::*};
 use embedded_hal::digital::v2::OutputPin;
-use cortex_m_rt::entry;
 use st7789::{Orientation, ST7789};
-use display_interface_spi::SPIInterfaceNoCS;
 
-use embedded_hal::blocking::delay::{DelayMs, DelayUs};
-//
-// pub type HalSpimError = p_hal::spim::Error;
-//
-// pub type Spim0PortType = p_hal::spim::Spim<pac::SPIM0>;
-// pub type DisplaySckPinType = p_hal::gpio::p0::P0_18<p_hal::gpio::Output<p_hal::gpio::PushPull>>;
-// pub type DisplayMosiPinType = p_hal::gpio::p0::P0_26<p_hal::gpio::Output<p_hal::gpio::PushPull>>;
+use embedded_hal::blocking::delay::DelayUs;
 
 const SCREEN_WIDTH: i32 = 240;
 const SCREEN_HEIGHT: i32 = 240;
@@ -47,8 +36,7 @@ fn main() -> ! {
     // PineTime has a 32 MHz HSE (HFXO) and a 32.768 kHz LSE (LFXO)
     // Optimize clock config
     let dp = pac::Peripherals::take().unwrap();
-    // let _clockit = dp.CLOCK.constrain().enable_ext_hfosc();
-    //let _clocks = hal::clocks::Clocks::new(dp.CLOCK).enable_ext_hfosc();
+    let _clocks = hal::clocks::Clocks::new(dp.CLOCK).enable_ext_hfosc();
 
     //let port0 = dp.P0.split();
     let port0 = Parts::new(dp.P0);
@@ -60,9 +48,17 @@ fn main() -> ! {
     let mut vibe = port0.p0_16.into_push_pull_output(Level::High).degrade();
     pulse_vibe(&mut vibe, &mut delay_source, 10);
 
-    hprintln!("Starting!!!. v3").unwrap();
+    hprintln!("Starting...").unwrap();
 
-    //delay_source.delay_ms(1u8);
+    // internal i2c0 bus devices: BMA421 (accel), HRS3300 (hrs), CST816S (TouchPad)
+    // BMA421-INT:  P0.08
+    // TP-INT: P0.28
+    let i2c0_pins = twim::Pins {
+        scl: port0.p0_07.into_floating_input().degrade(),
+        sda: port0.p0_06.into_floating_input().degrade(),
+    };
+    let i2c_port = twim::Twim::new(dp.TWIM1, i2c0_pins, twim::Frequency::K400);
+    //let i2c_bus0 = shared_bus::CortexMBusManager::new(i2c_port);
 
     let spim0_pins = spim::Pins {
         sck: port0.p0_02.into_push_pull_output(Level::Low).degrade(),
@@ -87,26 +83,11 @@ fn main() -> ! {
     let di = SPIInterfaceNoCS::new(spim0, display_dc);
 
     // create display driver
-    let mut display = ST7789::new(
-        di,
-        display_rst,
-        SCREEN_WIDTH as u16,
-        SCREEN_HEIGHT as u16,
-    );
+    let mut display = ST7789::new(di, display_rst, SCREEN_WIDTH as u16, SCREEN_HEIGHT as u16);
     display.init(&mut delay_source).unwrap();
     display.set_orientation(Orientation::Portrait).unwrap();
 
     draw_background(&mut display);
-
-    // internal i2c0 bus devices: BMA421 (accel), HRS3300 (hrs), CST816S (TouchPad)
-    // BMA421-INT:  P0.08
-    // TP-INT: P0.28
-    let i2c0_pins = twim::Pins {
-        scl: port0.p0_07.into_floating_input().degrade(),
-        sda: port0.p0_06.into_floating_input().degrade(),
-    };
-    let i2c_port = twim::Twim::new(dp.TWIM1, i2c0_pins, twim::Frequency::K400);
-    // let i2c_bus0 = shared_bus::CortexMBusManager::new(i2c_port);
 
     // setup touchpad external interrupt pin: P0.28/AIN4 (TP_INT)
     let touch_int = port0.p0_28.into_pullup_input().degrade();
@@ -123,7 +104,7 @@ fn main() -> ! {
 
         if let Some(evt) = touchpad.read_one_touch_event(true) {
             refresh_count += 1;
-            hprintln!("{:?}", evt).unwrap();
+            //hprintln!("{:?}", evt).unwrap();
 
             draw_marker(&mut display, &evt, rand_color);
             let vibe_time = match evt.gesture {
