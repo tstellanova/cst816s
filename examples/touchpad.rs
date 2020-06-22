@@ -54,13 +54,13 @@ fn main() -> ! {
     let port0 = Parts::new(dp.P0);
 
     // random number generator peripheral
-    //let mut rng = Rng::new(dp.RNG);
+    let mut rng = Rng::new(dp.RNG);
 
     // vibration motor output: drive low to activate motor
-    // let mut vibe = port0.p0_16.into_push_pull_output(Level::High).degrade();
-    // pulse_vibe(&mut vibe, &mut delay_source, 10);
+    let mut vibe = port0.p0_16.into_push_pull_output(Level::High).degrade();
+    pulse_vibe(&mut vibe, &mut delay_source, 10);
 
-    hprintln!("Starting!!!. v2").unwrap();
+    hprintln!("Starting!!!. v3").unwrap();
 
     //delay_source.delay_ms(1u8);
 
@@ -101,54 +101,49 @@ fn main() -> ! {
     // internal i2c0 bus devices: BMA421 (accel), HRS3300 (hrs), CST816S (TouchPad)
     // BMA421-INT:  P0.08
     // TP-INT: P0.28
-    // let i2c0_pins = twim::Pins {
-    //     scl: port0.p0_07.into_floating_input().degrade(),
-    //     sda: port0.p0_06.into_floating_input().degrade(),
-    // };
-    // let i2c_port = twim::Twim::new(dp.TWIM1, i2c0_pins, twim::Frequency::K400);
-    // // let i2c_bus0 = shared_bus::CortexMBusManager::new(i2c_port);
-    //
-    // // setup touchpad external interrupt pin: P0.28/AIN4 (TP_INT)
-    // let touch_int = port0.p0_28.into_pullup_input().degrade();
-    // // setup touchpad reset pin: P0.10/NFC2 (TP_RESET)
-    // let touch_rst = port0.p0_10.into_push_pull_output(Level::High).degrade();
-    //
-    // let mut touchpad = CST816S::new(i2c_port, touch_int, touch_rst);
-    // touchpad.setup(&mut delay_source).unwrap();
-    //
-    // let mut refresh_count = 0;
-    // loop {
-    //     let rand_val = rng.random_u16();
-    //     let rand_color = Rgb565::from(RawU16::new(rand_val));
-    //
-    //     delay_source.delay_us(1u32);
-    //
-    //     hprintln!("looping {}", rand_val).unwrap();
-    //
-    //     if let Some(evt) = touchpad.read_one_touch_event(true) {
-    //         refresh_count += 1;
-    //         hprintln!("{:?}", evt).unwrap();
-    //
-    //         draw_marker(&mut display, &evt, rand_color);
-    //         let vibe_time = match evt.gesture {
-    //             TouchGesture::LongPress => {
-    //                 refresh_count = 1000;
-    //                 50_000
-    //             }
-    //             TouchGesture::SingleClick => 5_000,
-    //             _ => 0,
-    //         };
-    //
-    //         pulse_vibe(&mut vibe, &mut delay_source, vibe_time);
-    //         if refresh_count > 40 {
-    //             draw_background(&mut display);
-    //             refresh_count = 0;
-    //         }
-    //     } else {
-    //         delay_source.delay_us(1u32);
-    //     }
-    // }
-    loop {}
+    let i2c0_pins = twim::Pins {
+        scl: port0.p0_07.into_floating_input().degrade(),
+        sda: port0.p0_06.into_floating_input().degrade(),
+    };
+    let i2c_port = twim::Twim::new(dp.TWIM1, i2c0_pins, twim::Frequency::K400);
+    // let i2c_bus0 = shared_bus::CortexMBusManager::new(i2c_port);
+
+    // setup touchpad external interrupt pin: P0.28/AIN4 (TP_INT)
+    let touch_int = port0.p0_28.into_pullup_input().degrade();
+    // setup touchpad reset pin: P0.10/NFC2 (TP_RESET)
+    let touch_rst = port0.p0_10.into_push_pull_output(Level::High).degrade();
+
+    let mut touchpad = CST816S::new(i2c_port, touch_int, touch_rst);
+    touchpad.setup(&mut delay_source).unwrap();
+
+    let mut refresh_count = 0;
+    loop {
+        let rand_val = rng.random_u16();
+        let rand_color = Rgb565::from(RawU16::new(rand_val));
+
+        if let Some(evt) = touchpad.read_one_touch_event(true) {
+            refresh_count += 1;
+            hprintln!("{:?}", evt).unwrap();
+
+            draw_marker(&mut display, &evt, rand_color);
+            let vibe_time = match evt.gesture {
+                TouchGesture::LongPress => {
+                    refresh_count = 1000;
+                    50_000
+                }
+                TouchGesture::SingleClick => 5_000,
+                _ => 0,
+            };
+
+            pulse_vibe(&mut vibe, &mut delay_source, vibe_time);
+            if refresh_count > 40 {
+                draw_background(&mut display);
+                refresh_count = 0;
+            }
+        } else {
+            delay_source.delay_us(1u32);
+        }
+    }
 }
 
 fn draw_background(display: &mut impl DrawTarget<Rgb565>) {
