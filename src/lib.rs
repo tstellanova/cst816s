@@ -72,21 +72,19 @@ where
 
     /// Read enough registers to fill our read buf
     pub fn read_registers(&mut self) -> Result<(), Error<CommE, PinE>> {
+        let read_reg = [Self::REG_FIRST; 1];
         self.i2c
-            .write_read(
-                Self::DEFAULT_I2C_ADDRESS,
-                &[Self::REG_FIRST],
-                self.blob_buf.as_mut(),
-            )
+            .write_read(Self::DEFAULT_I2C_ADDRESS, &read_reg, self.blob_buf.as_mut())
             .map_err(Error::Comm)?;
         Ok(())
     }
 
     pub fn read_truncated_registers(&mut self) -> Result<(), Error<CommE, PinE>> {
+        let read_reg = [Self::REG_FIRST; 1];
         self.i2c
             .write_read(
                 Self::DEFAULT_I2C_ADDRESS,
-                &[Self::REG_FIRST],
+                &read_reg,
                 self.blob_buf[0..ONE_EVENT_LEN].as_mut(),
             )
             .map_err(Error::Comm)?;
@@ -192,7 +190,7 @@ where
 const BLOB_BUF_LEN: usize = (10 * 6) + 3; // (MAX_TOUCH_CHANNELS * RAW_TOUCH_EVENT_LEN) + GESTURE_HEADER_LEN;
 const ONE_EVENT_LEN: usize = 6 + 3; // RAW_TOUCH_EVENT_LEN + GESTURE_HEADER_LEN
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug, PartialEq)]
 #[repr(u8)]
 pub enum TouchGesture {
     None = 0x00,
