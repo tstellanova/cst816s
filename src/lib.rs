@@ -3,7 +3,7 @@
 use core::fmt::Debug;
 
 use embedded_hal as hal;
-use hal::blocking::delay::DelayUs;
+use embedded_hal::delay::DelayNs;
 
 /// Errors in this crate
 #[derive(Debug)]
@@ -39,11 +39,9 @@ pub struct TouchEvent {
 
 impl<I2C, PINT, RST, CommE, PinE> CST816S<I2C, PINT, RST>
 where
-    I2C: hal::blocking::i2c::Write<Error = CommE>
-        + hal::blocking::i2c::Read<Error = CommE>
-        + hal::blocking::i2c::WriteRead<Error = CommE>,
-    PINT: hal::digital::v2::InputPin,
-    RST: hal::digital::v2::StatefulOutputPin<Error = PinE>,
+    I2C: hal::i2c::I2c<Error = CommE>,
+    PINT: hal::digital::InputPin,
+    RST: hal::digital::StatefulOutputPin<Error = PinE>,
 {
     pub fn new(port: I2C, interrupt_pin: PINT, reset_pin: RST) -> Self {
         Self {
@@ -57,7 +55,7 @@ where
     /// setup the driver to communicate with the device
     pub fn setup(
         &mut self,
-        delay_source: &mut impl DelayUs<u32>,
+        delay_source: &mut impl DelayNs,
     ) -> Result<(), Error<CommE, PinE>> {
         // reset the chip
         self.pin_rst.set_low().map_err(Error::Pin)?;
