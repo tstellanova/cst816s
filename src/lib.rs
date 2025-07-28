@@ -140,7 +140,8 @@ where
             if self.read_truncated_registers().is_ok() {
                 let gesture_id = self.blob_buf[Self::GESTURE_ID_OFF];
                 let num_points = (self.blob_buf[Self::NUM_POINTS_OFF] & 0x0F) as usize;
-                if num_points <= Self::MAX_TOUCH_CHANNELS {
+                // Only return a touch event if there are actually touch points
+                if num_points > 0 && num_points <= Self::MAX_TOUCH_CHANNELS {
                     //In testing with a PineTime we only ever seem to get one event
                     let evt_start: usize = Self::GESTURE_HEADER_LEN;
                     if let Some(mut evt) = Self::touch_event_from_data(
